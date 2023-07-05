@@ -36,7 +36,9 @@ for yearFolder in years:
                     for k, v in image._getexif().items()
                     if k in PIL.ExifTags.TAGS
                 }
-                print(exif["XPComment"].decode())
+                print(day_name)
+                print(exif["XPComment"].decode('utf-16'))
+                print("\n\n")
             except Exception as e:
                 print(e)
         break
