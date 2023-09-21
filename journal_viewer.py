@@ -4,6 +4,7 @@ from PIL import Image
 import PIL.ExifTags
 from PIL.ExifTags import TAGS
 import sqlite3
+from datetime import datetime
 
 def isYear(fileName):
     '''
@@ -21,7 +22,7 @@ def xpkeywordsToDict(XPKeywords):
     Takes in XPKeywords (tags) with album listening
     information and converts them to a dictionary
     '''
-    print(XPKeywords)
+    #print(XPKeywords)
     musicDict = {}
     # split album list into a string. XPKeywords comes in the form: album1; album2; album3
     albums = XPKeywords.split(";")
@@ -41,21 +42,18 @@ def xpkeywordsToDict(XPKeywords):
         if (index + 1) < (len(albums)):
             # if playPattern matches, add album to the dictionary with the number of plays
             if playPattern.match(albums[index + 1]):
-                #print("playPattern match:", albums[index + 1][1:-1])
+                # the split crap is for getting the numbers between the brackets
                 musicDict[albumName] = albums[index + 1].split('[', 1)[1].split(']')[0]
                 index +=1
             # if extensionPattern matches, look ahead two for the album and then the number of plays for both
             # only need to look two ahead because only two albums can have the same number of plays
             elif extensionPattern.match(albums[index + 1]):
-                #print("extensionPattern match")
-                #if index + 2 < len(albums) - 1:
                 albumName2 = albums[index + 2]
-                    #if index + 3 < len(albums) - 1:
-                    #    if playPattern.match(albums[index + 3]):
                 musicDict[albumName] = albums[index + 3].split('[', 1)[1].split(']')[0]
                 musicDict[albumName2] = albums[index + 3].split('[', 1)[1].split(']')[0]
                 index += 3
 
+            # ugly
             else:
                 musicDict[albumName] = 1
         else:
@@ -63,17 +61,26 @@ def xpkeywordsToDict(XPKeywords):
         
         index += 1
 
-    for keys,values in musicDict.items():
-        print(keys, values)
-    print("")
     return musicDict
+
+conn = sqlite3.connect("journals.db")
+
+cur = conn.cursor()
+
+# create a table for journal entries
+cur.execute('''CREATE TABLE IF NOT EXISTS journal
+            (date TIMESTAMP PRIMARY KEY, entry TEXT)''')
+
+# create a table for albums
+cur.execute('''CREATE TABLE IF NOT EXISTS albums
+            (album_id INTEGER PRIMARY KEY AUTOINCREMENT, album_name TEXT UNIQUE)''')
+
+# create a table for album occurences
 
 path = "aryday"
 years = [os.path.join(path, file) for file in os.listdir(path) if isYear(file)]
 # loop through all year folders in "aryday" 
 for yearFolder in years:
-    #days = [file.strip(".jpg") for file in os.listdir(yearFolder) if file.endswith(".jpg")]
-    #print(days)
     days = list()
     content = list()
     albums = list()
@@ -93,21 +100,35 @@ for yearFolder in years:
                 }
 
                 #print(day_name)
+                datetime_object = datetime.strptime(day_name.split(".jpg")[0], "%m.%d.%Y")
+
                 #print(exif.keys())
                 if("XPComment" in exif):
-                    content.append(exif["XPComment"].decode('utf-16'))
+                    journal_entry = exif["XPComment"].decode('utf-16')
+                    content.append(journal_entry)
+
+                    #print(exif["XPComment"].decode('utf-16'))
+
+                    cur.execute("INSERT OR REPLACE INTO journal (date, entry) VALUES (?, ?)", (datetime_object, exif["XPComment"].decode('utf-16'),))
                 else:
                     content.append("")
                 
                 if("XPKeywords" in exif):
-                    albums.append(xpkeywordsToDict(exif["XPKeywords"].decode('utf-16')))
+                    raw_albums = xpkeywordsToDict(exif["XPKeywords"].decode('utf-16'))
+                    
+                    # remove null terminater '\x00' from end of album names
+                    processed_albums = {k.rstrip('\x00'):v for k, v in raw_albums.items()}
+                    
+                    # k = album name, v = number of plays
+                    for k, v in processed_albums.items():
+                        # insert album into album db
+                        cur.execute("INSERT INTO albums (album_name) VALUES (?) ON CONFLICT (album_name) DO NOTHING", (k,))
+
                 else:
                     albums.append({})
-                #print(exif["XPComment"].decode('utf-16'))
-                #print(exif["XPKeywords"].decode('utf-16'))
-                #print("\n\n")
+
             except Exception as e:
                 print(e)
-        #break
-    #print(days)
-        
+
+conn.commit()
+conn.close()
