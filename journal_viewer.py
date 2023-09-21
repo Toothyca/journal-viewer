@@ -76,6 +76,10 @@ cur.execute('''CREATE TABLE IF NOT EXISTS albums
             (album_id INTEGER PRIMARY KEY AUTOINCREMENT, album_name TEXT UNIQUE)''')
 
 # create a table for album occurences
+cur.execute('''CREATE TABLE IF NOT EXISTS listens_per_day
+            (date TIMESTAMP PRIMARY KEY, album_name TEXT, listens INTEGER,
+            FOREIGN KEY(date) REFERENCES journal(date),
+            FOREIGN KEY(album_name) REFERENCES albums(album_name))''')
 
 path = "aryday"
 years = [os.path.join(path, file) for file in os.listdir(path) if isYear(file)]
@@ -123,6 +127,8 @@ for yearFolder in years:
                     for k, v in processed_albums.items():
                         # insert album into album db
                         cur.execute("INSERT INTO albums (album_name) VALUES (?) ON CONFLICT (album_name) DO NOTHING", (k,))
+
+                        cur.execute("INSERT OR REPLACE INTO listens_per_day (date, album_name, listens) VALUES (?, ?, ?)", (datetime_object, k, v,))
 
                 else:
                     albums.append({})
